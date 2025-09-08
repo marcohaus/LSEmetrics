@@ -1,4 +1,4 @@
-#' BFS Macro Variance Estimation
+#' LSE Macro Variance Estimation
 #'
 #' Calculates macro-level variance estimates, confidence intervals,
 #' and coefficient of variation (CV) based on weighted medians.
@@ -33,66 +33,127 @@
 #'   anzlohn = sample(2:10, 100, replace = TRUE),
 #'   stra_n = rep(letters[1:5], each = 20)
 #' )
-#' BFS_makro(quant = 0.5, data = df)
+#' LSE_makro(quant = 0.5, data = df)
 #' }
-LSE_makro <- function(quant = 0.5, data) {
-  y <- w.median(data$mbls, data$gewibgrs, probs = quant, type = 1)
-  theta <- quant
-  Q975 <- qnorm(0.975)
+LSE_makro = function(
+    data,
+    value_col = "mbls",             # Standardisierter Bruttomonatslohn ohne Überstunden
+    weight_col="gewibgrs",          #  Standardisiertes Stichprobengewicht
+    company_col="entid_n",          # Unternehmensidentifikator
+    company_size_col="anzlohn",     # Anzahl Lohnangaben pro Unternehmen
+    thi_col="thi",                  # Korrigierte Antwortrate intra-Unternehmen
+    th_col="th",                    # Korrigierte Antwortrate inter-Unternehmen
+    nrep_col="nrep",                # Anzahl der antwortenden Unternehmen pro Schicht
+    street_col="stra_n",            # Schichtungsvariable
+    group1_col="gr",                # Grossregion
+    group2_col= "nog_2_08_pub",     # Wirtschaftsbranche, NOGA 2008 (2-stellig), Stichprobengruppierungen
+    quant = 0.5
+) {
 
-  ent_agg <- data %>%
-    group_by(entid_n) %>%
-    summarise(
-      svhi = sum(gewibgrs, na.rm = TRUE),
-      NDhi = n(),
-      e_hi = sum(gewibgrs * (ifelse(mbls > y, 0, 1) - 0.5)),
-      ej_var = var(gewibgrs * (ifelse(mbls > y, 0, 1) - 0.5)),
-      thi = first(thi),
-      anzlohn = first(anzlohn),
-      stra_n = first(stra_n),
-      .groups = "drop"
-    ) %>%
+  library(dplyr)
+
+  # Weighted median
+  y = w.median(data[[value_col]], data[[weight_col]], probs = quant, type = 1)
+
+  # -------------------------------
+  # Unternehmensniveau
+  # -------------------------------
+
+  company_level = data %>%
+    group_by(.data[[company_col]]) %>%
+    mutate(svhi = sum(.data[[weight_col]])) %>%
+    mutate(zhij = ifelse(.data[[value_col]] > y, 0, 1)) %>%
+    mutate(ej = .data[[weight_col]] * (zhij - 0.5)) %>%
     mutate(
-      NDhi1 = NDhi - 1,
-      Bhi = NDhi1 * ej_var + NDhi * (1 - NDhi / anzlohn) * (e_hi / NDhi)^2,
-      Bhi = ifelse(anzlohn > 1, Bhi / (anzlohn - 1), 0),
-      Bhi = Bhi * (1 - thi) * anzlohn,
-      Bhi = ifelse(thi == 1, 0, Bhi)
+      e_hi = sum(ej),
+      Bhi = var(ej),
+      NDhi = n()
     )
 
-  stra_agg <- ent_agg %>%
-    group_by(stra_n) %>%
-    summarise(
+  # -------------------------------
+  # Straßenniveau
+  # -------------------------------
+
+  street_level = company_level %>%
+    mutate(NDhi1 = NDhi - 1) %>%
+    mutate(Bhi = NDhi1 * Bhi + NDhi * (1 - NDhi / .data[[company_size_col]]) * (e_hi / NDhi)^2) %>%
+    mutate(Bhi = ifelse(.data[[company_size_col]] > 1, Bhi / (.data[[company_size_col]] - 1), 0)) %>%
+    mutate(Bhi = Bhi * (1 - .data[[thi_col]]) * .data[[company_size_col]]) %>%
+    mutate(Bhi = ifelse(.data[[thi_col]] == 1, 0, Bhi)) %>%
+    distinct(.data[[company_col]], .keep_all = TRUE) %>%
+    group_by(.data[[street_col]]) %>%
+    mutate(
       Bh = plus(Bhi),
       svh = sum(svhi, na.rm = TRUE),
       dlh = sum(NDhi1, na.rm = TRUE),
-      toth = sum(NDhi, na.rm = TRUE),
-      .groups = "drop"
+      toth = sum(NDhi, na.rm = TRUE)
+    ) %>%
+    mutate(Ah = var(e_hi), e_h = sum(e_hi)) %>%
+    mutate(n_e = toth - dlh) %>%
+    mutate(Ah = ifelse(
+      n_e >= 1 & .data[[nrep_col]] > 1,
+      ((n_e - 1) * Ah + n_e * (1 - n_e / .data[[nrep_col]]) * (e_h / n_e)^2) / (.data[[nrep_col]] - 1),
+      Ah
+    )) %>%
+    mutate(Ahrel = Ah / (svh * svh)) %>%
+    group_by(.data[[group1_col]], .data[[group2_col]]) %>%
+    mutate(m_Ahrel = mean(unique(Ahrel), na.rm = TRUE)) %>%
+    ungroup() %>%
+    mutate(Ah = ifelse(
+      n_e == 1 | (n_e > 1 & .data[[nrep_col]] == 1),
+      svh * svh * m_Ahrel,
+      Ah
+    )) %>%
+    mutate(Ah = ifelse(.data[[th_col]] == 1, 0, Ah)) %>%
+    mutate(V2sth = .data[[nrep_col]] * (1 - .data[[th_col]]) * Ah + .data[[th_col]] * Bh)
+
+  theta = quant
+
+  # -------------------------------
+  # Zusammenfassung / Aggregation
+  # -------------------------------
+
+  summary_stats = street_level %>%
+    group_by(.data[[street_col]]) %>%
+    mutate(k = rank(.data[[company_col]])) %>%
+    filter(k == 1) %>%
+    ungroup() %>%
+    summarize(
+      SV2st = sum(V2sth, na.rm = TRUE),
+      denom = sum(svh),
+      dl = sum(dlh),
+      totd = sum(toth)
     ) %>%
     mutate(
-      SV2st = Bh / (svh^2),
-      demi95 = sqrt(SV2st) * Q975,
+      SV2st = SV2st / (denom * denom),
+      demi95 = sqrt(SV2st) * 1.96,
       demi = sqrt(SV2st),
-      c1 = pmax((theta - demi95) * 100, 0),
-      c2 = pmin((theta + demi95) * 100, 100)
+      c1 = (theta - demi95) * 100,
+      c2 = (theta + demi95) * 100,
+      c3 = (theta - demi) * 100,
+      c4 = (theta + demi) * 100,
+      c3 = pmax(c3, 0),
+      c1 = pmax(c1, 0),
+      c4 = pmin(c4, 100),
+      c2 = pmin(c2, 100)
     )
 
-  # Vectorisierte weighted quantiles
-  probs_vec <- c(stra_agg$c1 / 100, stra_agg$c2 / 100)
-  w_medians <- sapply(probs_vec, function(p) w.median(data$mbls, data$gewibgrs, probs = p, type = 1))
+  summary_stats$b_i95 = w.median(data[[value_col]], data[[weight_col]], probs = summary_stats$c1 / 100, type = 1)
+  summary_stats$b_s95 = w.median(data[[value_col]], data[[weight_col]], probs = summary_stats$c2 / 100, type = 1)
 
-  n <- nrow(stra_agg)
-  stra_agg$b_i95 <- w_medians[1:n]
-  stra_agg$b_s95 <- w_medians[(n + 1):(2 * n)]
+  quant_label <- if (quant == 0.5) "median" else paste0("quant_", quant)
 
-  stra_agg <- stra_agg %>%
+  output = summary_stats %>%
     mutate(
-      median = y,
-      CV_sync95 = 100 * pmax(median - b_i95, b_s95 - median) / (Q975 * median),
-      n_e = toth - dlh,
-      n_s = toth,
+      !!quant_label := y,  # dynamischer Spaltenname für Median oder Quantil
+      CV_sync95 = max(y - b_i95, b_s95 - y),
+      CV_sync95 = 100 * CV_sync95 / (1.96 * y),
+      n_e = totd - dl,
+      n_s = totd,
       vari = SV2st
-    )
+    )%>%
+    select(b_i95, b_s95, !!sym(quant_label), CV_sync95, n_e, n_s, vari)
 
-  return(stra_agg)
+  return(output)
 }
+

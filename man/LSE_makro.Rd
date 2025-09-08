@@ -2,13 +2,24 @@
 % Please edit documentation in R/LSE_makro.R
 \name{LSE_makro}
 \alias{LSE_makro}
-\title{BFS Macro Variance Estimation}
+\title{LSE Macro Variance Estimation}
 \usage{
-LSE_makro(quant = 0.5, data)
+LSE_makro(
+  data,
+  value_col = "mbls",
+  weight_col = "gewibgrs",
+  company_col = "entid_n",
+  company_size_col = "anzlohn",
+  thi_col = "thi",
+  th_col = "th",
+  nrep_col = "nrep",
+  street_col = "stra_n",
+  group1_col = "gr",
+  group2_col = "nog_2_08_pub",
+  quant = 0.5
+)
 }
 \arguments{
-\item{quant}{Numeric scalar. Quantile to estimate (default = 0.5 = median).}
-
 \item{data}{A \code{data.frame} containing at least:
 \itemize{
 \item \code{mbls}   - outcome variable
@@ -16,6 +27,8 @@ LSE_makro(quant = 0.5, data)
 \item \code{entid_n} - entity identifier
 \item \code{thi}, \code{anzlohn}, \code{stra_n} - stratification vars
 }}
+
+\item{quant}{Numeric scalar. Quantile to estimate (default = 0.5 = median).}
 }
 \value{
 A \code{data.frame} with aggregated statistics, including:
@@ -42,6 +55,6 @@ df <- data.frame(
   anzlohn = sample(2:10, 100, replace = TRUE),
   stra_n = rep(letters[1:5], each = 20)
 )
-BFS_makro(quant = 0.5, data = df)
+LSE_makro(quant = 0.5, data = df)
 }
 }
