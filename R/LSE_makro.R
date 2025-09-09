@@ -1,53 +1,101 @@
-#' LSE Macro Variance Estimation
+#' Berechnung von Lohnquantilen und Konfidenzintervallen nach BFS-Makromethode
 #'
-#' Calculates macro-level variance estimates, confidence intervals,
-#' and coefficient of variation (CV) based on weighted medians.
+#' \code{LSE_makro()} berechnet gewichtete Lohnquantile (z. B. Median) sowie
+#' deren Varianzschätzung und Konfidenzintervalle gemäss der BFS-Makromethode.
+#' Die Berechnungen berücksichtigen Unternehmens- und Strassenniveau sowie
+#' Gewichtungs- und Korrekturfaktoren.
 #'
-#' @param quant Numeric scalar. Quantile to estimate (default = 0.5 = median).
-#' @param data A \code{data.frame} containing at least:
-#'   \itemize{
-#'     \item \code{mbls}   - outcome variable
-#'     \item \code{gewibgrs} - weights
-#'     \item \code{entid_n} - entity identifier
-#'     \item \code{thi}, \code{anzlohn}, \code{stra_n} - stratification vars
-#'   }
+#' @param data Ein \code{data.frame} oder \code{tibble}, das die notwendigen Variablen enthält.
+#' @param quant Numerisch, das gewünschte Quantil (Standard = \code{0.5}, Median).
+#' @param value_col Zeichenkette, Name der Spalte mit den Lohnangaben
+#'   (Standard: \code{"mbls"} = standardisierter Bruttomonatslohn ohne Überstunden).
+#' @param weight_col Zeichenkette, Name der Spalte mit den Stichprobengewichten
+#'   (Standard: \code{"gewibgrs"}).
+#' @param company_col Zeichenkette, Unternehmensidentifikator (Standard: \code{"entid_n"}).
+#' @param company_size_col Zeichenkette, Anzahl der Lohnangaben pro Unternehmen
+#'   (Standard: \code{"anzlohn"}).
+#' @param thi_col Zeichenkette, Spalte mit korrigierter Antwortrate intra-Unternehmen
+#'   (Standard: \code{"thi"}).
+#' @param th_col Zeichenkette, Spalte mit korrigierter Antwortrate inter-Unternehmen
+#'   (Standard: \code{"th"}).
+#' @param nrep_col Zeichenkette, Spalte mit der Anzahl der antwortenden Unternehmen
+#'   pro Schicht (Standard: \code{"nrep"}).
+#' @param stra_col Zeichenkette, Schichtungsvariable (Standard: \code{"stra_n"}).
+#' @param group1_col Zeichenkette, erste Gruppierungsvariable (Standard: \code{"gr"}).
+#' @param group2_col Zeichenkette, zweite Gruppierungsvariable, typischerweise
+#'   Branchenklassifikation (Standard: \code{"nog_2_08_pub"}).
 #'
-#' @return A \code{data.frame} with aggregated statistics, including:
-#'   \itemize{
-#'     \item \code{median} - weighted median
-#'     \item \code{CV_sync95} - coefficient of variation
-#'     \item \code{b_i95}, \code{b_s95} - lower/upper confidence bounds
-#'     \item \code{vari} - variance estimate
-#'   }
-#' @export
+#' @details
+#' Die Funktion implementiert die vom BFS verwendete Makromethode zur
+#' Varianzschätzung von Lohnquantilen. Sie arbeitet in mehreren Stufen:
+#' \enumerate{
+#'   \item Berechnung des gewichteten Quantils mit \code{w.median}.
+#'   \item Aggregation auf Unternehmensebene.
+#'   \item Hochrechnung und Varianzschätzung auf Strassenniveau
+#'         unter Berücksichtigung von Korrekturfaktoren.
+#'   \item Aggregation und Berechnung von Konfidenzintervallen.
+#' }
+#'
+#' @return Ein \code{data.frame} mit folgenden Spalten:
+#' \itemize{
+#'   \item \code{b_i95}: Untere Grenze des 95\%-Konfidenzintervalls.
+#'   \item \code{b_s95}: Obere Grenze des 95\%-Konfidenzintervalls.
+#'   \item \code{median} oder \code{quant_xx}: Das geschätzte Quantil.
+#'   \item \code{CV_sync95}: Variationskoeffizient.
+#'   \item \code{n_e}: Effektive Stichprobengrösse.
+#'   \item \code{n_s}: Gesamtstichprobengrösse.
+#'   \item \code{vari}: Geschätzte Varianz.
+#' }
 #'
 #' @examples
 #' \dontrun{
 #' library(dplyr)
-#' set.seed(123)
-#' df <- data.frame(
-#'   mbls = rnorm(100, mean = 50, sd = 10),
-#'   gewibgrs = runif(100, 1, 5),
-#'   entid_n = rep(1:20, each = 5),
-#'   thi = sample(0:1, 100, replace = TRUE),
-#'   anzlohn = sample(2:10, 100, replace = TRUE),
-#'   stra_n = rep(letters[1:5], each = 20)
-#' )
-#' LSE_makro(quant = 0.5, data = df)
+#' library(purrr)
+#'
+#' # Einfacher Aufruf: Medianlohn für TG, privater Sektor
+#' DATEN %>%
+#'   filter(arbkto == "TG", privoef == 1) %>%
+#'   LSE_makro(quant = 0.5)
+#'
+#' # Beispiel mit Gruppierung: 90%-Quantil nach Geschlecht und Beruf
+#' DATEN %>%
+#'   filter(arbkto == "TG", privoef == 1) %>%
+#'   group_split(geschle, berufst) %>%
+#'   map_dfr(~ LSE_makro(.x, quant = 0.9) %>%
+#'             mutate(
+#'               geschle = unique(.x$geschle),
+#'               berufst = unique(.x$berufst)
+#'             ))
+#'
+#' # Mehrere Quantile (25%, 50%, 75%) nach Geschlecht und Beruf
+#' DATEN %>%
+#'   filter(arbkto == "TG", privoef == 1) %>%
+#'   group_split(geschle, berufst) %>%
+#'   map_dfr(~ {
+#'     map_dfr(c(0.25, 0.5, 0.75), function(q) {
+#'       LSE_makro(.x, quant = q) %>%
+#'         mutate(
+#'           geschle = unique(.x$geschle),
+#'           berufst = unique(.x$berufst),
+#'           quantile = q
+#'         )
+#'     })
+#'   })
 #' }
+#' @export
 LSE_makro = function(
     data,
+    quant = 0.5,
     value_col = "mbls",             # Standardisierter Bruttomonatslohn ohne Überstunden
-    weight_col="gewibgrs",          #  Standardisiertes Stichprobengewicht
+    weight_col="gewibgrs",          # Standardisiertes Stichprobengewicht
     company_col="entid_n",          # Unternehmensidentifikator
     company_size_col="anzlohn",     # Anzahl Lohnangaben pro Unternehmen
     thi_col="thi",                  # Korrigierte Antwortrate intra-Unternehmen
     th_col="th",                    # Korrigierte Antwortrate inter-Unternehmen
     nrep_col="nrep",                # Anzahl der antwortenden Unternehmen pro Schicht
-    street_col="stra_n",            # Schichtungsvariable
+    stra_col="stra_n",              # Schichtungsvariable
     group1_col="gr",                # Grossregion
-    group2_col= "nog_2_08_pub",     # Wirtschaftsbranche, NOGA 2008 (2-stellig), Stichprobengruppierungen
-    quant = 0.5
+    group2_col= "nog_2_08_pub"      # Wirtschaftsbranche, NOGA 2008 (2-stellig), Stichprobengruppierungen
 ) {
 
   library(dplyr)
@@ -81,7 +129,7 @@ LSE_makro = function(
     mutate(Bhi = Bhi * (1 - .data[[thi_col]]) * .data[[company_size_col]]) %>%
     mutate(Bhi = ifelse(.data[[thi_col]] == 1, 0, Bhi)) %>%
     distinct(.data[[company_col]], .keep_all = TRUE) %>%
-    group_by(.data[[street_col]]) %>%
+    group_by(.data[[stra_col]]) %>%
     mutate(
       Bh = plus(Bhi),
       svh = sum(svhi, na.rm = TRUE),
@@ -114,7 +162,7 @@ LSE_makro = function(
   # -------------------------------
 
   summary_stats = street_level %>%
-    group_by(.data[[street_col]]) %>%
+    group_by(.data[[stra_col]]) %>%
     mutate(k = rank(.data[[company_col]])) %>%
     filter(k == 1) %>%
     ungroup() %>%

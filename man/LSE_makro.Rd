@@ -2,10 +2,11 @@
 % Please edit documentation in R/LSE_makro.R
 \name{LSE_makro}
 \alias{LSE_makro}
-\title{LSE Macro Variance Estimation}
+\title{Berechnung von Lohnquantilen und Konfidenzintervallen nach BFS-Makromethode}
 \usage{
 LSE_makro(
   data,
+  quant = 0.5,
   value_col = "mbls",
   weight_col = "gewibgrs",
   company_col = "entid_n",
@@ -13,48 +14,105 @@ LSE_makro(
   thi_col = "thi",
   th_col = "th",
   nrep_col = "nrep",
-  street_col = "stra_n",
+  stra_col = "stra_n",
   group1_col = "gr",
-  group2_col = "nog_2_08_pub",
-  quant = 0.5
+  group2_col = "nog_2_08_pub"
 )
 }
 \arguments{
-\item{data}{A \code{data.frame} containing at least:
-\itemize{
-\item \code{mbls}   - outcome variable
-\item \code{gewibgrs} - weights
-\item \code{entid_n} - entity identifier
-\item \code{thi}, \code{anzlohn}, \code{stra_n} - stratification vars
-}}
+\item{data}{Ein \code{data.frame} oder \code{tibble}, das die notwendigen Variablen enthält.}
 
-\item{quant}{Numeric scalar. Quantile to estimate (default = 0.5 = median).}
+\item{quant}{Numerisch, das gewünschte Quantil (Standard = \code{0.5}, Median).}
+
+\item{value_col}{Zeichenkette, Name der Spalte mit den Lohnangaben
+(Standard: \code{"mbls"} = standardisierter Bruttomonatslohn ohne Überstunden).}
+
+\item{weight_col}{Zeichenkette, Name der Spalte mit den Stichprobengewichten
+(Standard: \code{"gewibgrs"}).}
+
+\item{company_col}{Zeichenkette, Unternehmensidentifikator (Standard: \code{"entid_n"}).}
+
+\item{company_size_col}{Zeichenkette, Anzahl der Lohnangaben pro Unternehmen
+(Standard: \code{"anzlohn"}).}
+
+\item{thi_col}{Zeichenkette, Spalte mit korrigierter Antwortrate intra-Unternehmen
+(Standard: \code{"thi"}).}
+
+\item{th_col}{Zeichenkette, Spalte mit korrigierter Antwortrate inter-Unternehmen
+(Standard: \code{"th"}).}
+
+\item{nrep_col}{Zeichenkette, Spalte mit der Anzahl der antwortenden Unternehmen
+pro Schicht (Standard: \code{"nrep"}).}
+
+\item{stra_col}{Zeichenkette, Schichtungsvariable (Standard: \code{"stra_n"}).}
+
+\item{group1_col}{Zeichenkette, erste Gruppierungsvariable (Standard: \code{"gr"}).}
+
+\item{group2_col}{Zeichenkette, zweite Gruppierungsvariable, typischerweise
+Branchenklassifikation (Standard: \code{"nog_2_08_pub"}).}
 }
 \value{
-A \code{data.frame} with aggregated statistics, including:
+Ein \code{data.frame} mit folgenden Spalten:
 \itemize{
-\item \code{median} - weighted median
-\item \code{CV_sync95} - coefficient of variation
-\item \code{b_i95}, \code{b_s95} - lower/upper confidence bounds
-\item \code{vari} - variance estimate
+\item \code{b_i95}: Untere Grenze des 95\\%-Konfidenzintervalls.
+\item \code{b_s95}: Obere Grenze des 95\\%-Konfidenzintervalls.
+\item \code{median} oder \code{quant_xx}: Das geschätzte Quantil.
+\item \code{CV_sync95}: Variationskoeffizient.
+\item \code{n_e}: Effektive Stichprobengrösse.
+\item \code{n_s}: Gesamtstichprobengrösse.
+\item \code{vari}: Geschätzte Varianz.
 }
 }
 \description{
-Calculates macro-level variance estimates, confidence intervals,
-and coefficient of variation (CV) based on weighted medians.
+\code{LSE_makro()} berechnet gewichtete Lohnquantile (z. B. Median) sowie
+deren Varianzschätzung und Konfidenzintervalle gemäss der BFS-Makromethode.
+Die Berechnungen berücksichtigen Unternehmens- und Strassenniveau sowie
+Gewichtungs- und Korrekturfaktoren.
+}
+\details{
+Die Funktion implementiert die vom BFS verwendete Makromethode zur
+Varianzschätzung von Lohnquantilen. Sie arbeitet in mehreren Stufen:
+\enumerate{
+\item Berechnung des gewichteten Quantils mit \code{w.median}.
+\item Aggregation auf Unternehmensebene.
+\item Hochrechnung und Varianzschätzung auf Strassenniveau
+unter Berücksichtigung von Korrekturfaktoren.
+\item Aggregation und Berechnung von Konfidenzintervallen.
+}
 }
 \examples{
 \dontrun{
 library(dplyr)
-set.seed(123)
-df <- data.frame(
-  mbls = rnorm(100, mean = 50, sd = 10),
-  gewibgrs = runif(100, 1, 5),
-  entid_n = rep(1:20, each = 5),
-  thi = sample(0:1, 100, replace = TRUE),
-  anzlohn = sample(2:10, 100, replace = TRUE),
-  stra_n = rep(letters[1:5], each = 20)
-)
-LSE_makro(quant = 0.5, data = df)
+library(purrr)
+
+# Einfacher Aufruf: Medianlohn für TG, privater Sektor
+DATEN \%>\%
+  filter(arbkto == "TG", privoef == 1) \%>\%
+  LSE_makro(quant = 0.5)
+
+# Beispiel mit Gruppierung: 90\%-Quantil nach Geschlecht und Beruf
+DATEN \%>\%
+  filter(arbkto == "TG", privoef == 1) \%>\%
+  group_split(geschle, berufst) \%>\%
+  map_dfr(~ LSE_makro(.x, quant = 0.9) \%>\%
+            mutate(
+              geschle = unique(.x$geschle),
+              berufst = unique(.x$berufst)
+            ))
+
+# Mehrere Quantile (25\%, 50\%, 75\%) nach Geschlecht und Beruf
+DATEN \%>\%
+  filter(arbkto == "TG", privoef == 1) \%>\%
+  group_split(geschle, berufst) \%>\%
+  map_dfr(~ {
+    map_dfr(c(0.25, 0.5, 0.75), function(q) {
+      LSE_makro(.x, quant = q) \%>\%
+        mutate(
+          geschle = unique(.x$geschle),
+          berufst = unique(.x$berufst),
+          quantile = q
+        )
+    })
+  })
 }
 }
