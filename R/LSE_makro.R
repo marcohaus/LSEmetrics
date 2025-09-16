@@ -1,8 +1,8 @@
 #' Berechnung von Lohnquantilen und Konfidenzintervallen nach BFS-Makromethode
 #'
 #' \code{LSE_makro()} berechnet gewichtete Lohnquantile (z. B. Median) sowie
-#' deren Varianzschätzung und Konfidenzintervalle gemäss der BFS-Makromethode.
-#' Die Berechnungen berücksichtigen Unternehmens- und Strassenniveau sowie
+#' deren Varianzschätzung und Konfidenzintervalle gemäss der BFS-Methode.
+#' Die Berechnungen berücksichtigen Unternehmensfaktoren, Stratifizierung sowie
 #' Gewichtungs- und Korrekturfaktoren.
 #'
 #' @param data Ein \code{data.frame} oder \code{tibble}, das die notwendigen Variablen enthält.
