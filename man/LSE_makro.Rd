@@ -75,8 +75,8 @@ Varianzschätzung von Lohnquantilen. Sie arbeitet in mehreren Stufen:
 \enumerate{
 \item Berechnung des gewichteten Quantils mit \code{w.median}.
 \item Aggregation auf Unternehmensebene.
-\item Hochrechnung und Varianzschätzung auf Strassenniveau
-unter Berücksichtigung von Korrekturfaktoren.
+\item Hochrechnung und Varianzschätzung auf startifizierte
+Gruppen unter Einbezug der Korrekturfaktoren.
 \item Aggregation und Berechnung von Konfidenzintervallen.
 }
 }
