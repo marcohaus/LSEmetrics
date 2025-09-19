@@ -9,10 +9,10 @@
 #' @export
 #'
 #' @examples
-#' plus(c(1, 2, 3, NA))
-#' plus(c(NA, NA, NA))
+#' sum_na(c(1, 2, 3, NA))
+#' sum_na(c(NA, NA, NA))
 
-plus <- function(x) {
+sum_na <- function(x) {
   if (all(is.na(x))) return(NA)
   sum(x, na.rm = TRUE)
 }

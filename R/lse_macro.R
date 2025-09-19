@@ -38,13 +38,14 @@
 #'
 #' @return Ein \code{data.frame} mit folgenden Spalten:
 #' \itemize{
-#'   \item \code{b_i95}: Untere Grenze des 95\%-Konfidenzintervalls.
-#'   \item \code{b_s95}: Obere Grenze des 95\%-Konfidenzintervalls.
-#'   \item \code{median} oder \code{quant_xx}: Das geschätzte Quantil.
-#'   \item \code{CV_sync95}: Variationskoeffizient.
-#'   \item \code{n_e}: Effektive Stichprobengrösse.
-#'   \item \code{n_s}: Gesamtstichprobengrösse.
-#'   \item \code{vari}: Geschätzte Varianz.
+#'   \item \code{quant}: Quantile (0.5 = median)
+#'   \item \code{value}: Estimated value
+#'   \item \code{b_i95}: Lower bound of the 95% confidence interval
+#'   \item \code{b_s95}: Upper bound of the 95% confidence interval
+#'   \item \code{CV_sync95}: Synthetic coefficient of variation based on the variance index (95%)
+#'   \item \code{vari}: Estimated variance
+#'   \item \code{n_e}: Number of companies included in the calculation
+#'   \item \code{n_s}: Number of wages included in the calculation
 #' }
 #'
 #' @examples
@@ -55,13 +56,13 @@
 #' # Einfacher Aufruf: Medianlohn für TG, privater Sektor
 #' DATEN %>%
 #'   filter(arbkto == "TG", privoef == 1) %>%
-#'   LSE_makro(quant = 0.5)
+#'   lse_macro(quant = 0.5)
 #'
 #' # Beispiel mit Gruppierung: 90%-Quantil nach Geschlecht und Beruf
 #' DATEN %>%
 #'   filter(arbkto == "TG", privoef == 1) %>%
 #'   group_split(geschle, berufst) %>%
-#'   map_dfr(~ LSE_makro(.x, quant = 0.9) %>%
+#'   map_dfr(~ lse_macro(.x, quant = 0.5) %>%
 #'             mutate(
 #'               geschle = unique(.x$geschle),
 #'               berufst = unique(.x$berufst)
@@ -73,17 +74,16 @@
 #'   group_split(geschle, berufst) %>%
 #'   map_dfr(~ {
 #'     map_dfr(c(0.25, 0.5, 0.75), function(q) {
-#'       LSE_makro(.x, quant = q) %>%
+#'       lse_macro(.x, quant = q) %>%
 #'         mutate(
 #'           geschle = unique(.x$geschle),
-#'           berufst = unique(.x$berufst),
-#'           quantile = q
+#'           berufst = unique(.x$berufst)
 #'         )
 #'     })
 #'   })
 #' }
 #' @export
-LSE_makro = function(
+lse_macro = function(
     data,
     quant = 0.5,
     value_col = "mbls",             # Standardisierter Bruttomonatslohn ohne Überstunden
@@ -119,7 +119,7 @@ LSE_makro = function(
     )
 
   # -------------------------------
-  # Straßenniveau
+  # Stratum
   # -------------------------------
 
   street_level = company_level %>%
@@ -131,7 +131,7 @@ LSE_makro = function(
     distinct(.data[[company_col]], .keep_all = TRUE) %>%
     group_by(.data[[stra_col]]) %>%
     mutate(
-      Bh = plus(Bhi),
+      Bh = sum_na(Bhi),
       svh = sum(svhi, na.rm = TRUE),
       dlh = sum(NDhi1, na.rm = TRUE),
       toth = sum(NDhi, na.rm = TRUE)
@@ -189,19 +189,19 @@ LSE_makro = function(
   summary_stats$b_i95 = w.median(data[[value_col]], data[[weight_col]], probs = summary_stats$c1 / 100, type = 1)
   summary_stats$b_s95 = w.median(data[[value_col]], data[[weight_col]], probs = summary_stats$c2 / 100, type = 1)
 
-  quant_label <- if (quant == 0.5) "median" else paste0("quant_", quant)
+
 
   output = summary_stats %>%
     mutate(
-      !!quant_label := y,  # dynamischer Spaltenname für Median oder Quantil
+      quant=quant,
+      value= y,
       CV_sync95 = max(y - b_i95, b_s95 - y),
       CV_sync95 = 100 * CV_sync95 / (1.96 * y),
       n_e = totd - dl,
       n_s = totd,
       vari = SV2st
     )%>%
-    select(b_i95, b_s95, !!sym(quant_label), CV_sync95, n_e, n_s, vari)
+    select(quant,value,b_i95, b_s95,  CV_sync95,vari, n_e, n_s)
 
   return(output)
 }
-
