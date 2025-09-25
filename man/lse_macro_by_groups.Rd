@@ -84,9 +84,9 @@ into a single output.
 }
 \examples{
 \dontrun{
-df<-LSE2022_Cantons_exakt \%>\%
+df<-DATA \%>\%
  filter(arbkto == "TG", privoef == 1, nog_2_08 \%in\% c(86,69)) \%>\%
- make_groups_with_totals(
+ lse_macro_by_groups(
    group_vars = c( "berufst","geschle","nog_2_08"),
    quants = 0.5
  )

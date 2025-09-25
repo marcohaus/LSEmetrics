@@ -46,9 +46,9 @@
 #'
 #' @examples
 #' \dontrun{
-#'df<-LSE2022_Cantons_exakt %>%
+#'df<-DATA %>%
 #'  filter(arbkto == "TG", privoef == 1, nog_2_08 %in% c(86,69)) %>%
-#'  make_groups_with_totals(
+#'  lse_macro_by_groups(
 #'    group_vars = c( "berufst","geschle","nog_2_08"),
 #'    quants = 0.5
 #'  )
@@ -85,6 +85,9 @@ lse_macro_by_groups <- function(
                                     group1_col="gr",
                                     group2_col= "nog_2_08_pub"
                                     ) {
+
+  library(purrr)
+
   combos <- map(0:length(group_vars), ~combn(group_vars, m = length(group_vars) - .x, simplify = FALSE)) %>%
     flatten()
   map_dfr(combos, function(grps) {
