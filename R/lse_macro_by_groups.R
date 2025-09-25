@@ -60,7 +60,7 @@
 #'             n_e<5  ~ "...",
 #'             .default = as.character(value)
 #'           )
-#'  ) %>% select(-c(b_i95 ,b_s95 ,median ,CV_sync95  , n_e   ,n_s,vari )) %>%
+#'  ) %>% select(-c(b_i95 ,b_s95 ,value ,CV_sync95  , n_e   ,n_s,vari )) %>%
 #'  pivot_wider(
 #'    names_from = berufst ,
 #'    values_from = median_char,
