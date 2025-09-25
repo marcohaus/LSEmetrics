@@ -67,7 +67,7 @@
 #'    values_fill = "-"
 #'  )
 #' }
-#'
+#' @importFrom purrr map_dbl
 #' @export
 lse_macro_by_groups <- function(
                                     df,
@@ -86,7 +86,6 @@ lse_macro_by_groups <- function(
                                     group2_col= "nog_2_08_pub"
                                     ) {
 
-  library(purrr)
 
   combos <- map(0:length(group_vars), ~combn(group_vars, m = length(group_vars) - .x, simplify = FALSE)) %>%
     flatten()

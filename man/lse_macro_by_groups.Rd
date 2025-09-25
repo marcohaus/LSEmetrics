@@ -105,5 +105,4 @@ result<-df \%>\%
    values_fill = "-"
  )
 }
-
 }
