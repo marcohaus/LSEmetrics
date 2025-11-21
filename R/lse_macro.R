@@ -101,7 +101,7 @@ lse_macro = function(
   library(dplyr)
 
   # Weighted median
-  y = w.median(data[[value_col]], data[[weight_col]], probs = quant, type = 1)
+  y = w.median(data[[value_col]], data[[weight_col]], probs = quant, type = 4)
 
   # -------------------------------
   # Unternehmensniveau
