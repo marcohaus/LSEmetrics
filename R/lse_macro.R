@@ -95,13 +95,14 @@ lse_macro = function(
     nrep_col="nrep",                # Anzahl der antwortenden Unternehmen pro Schicht
     stra_col="stra_n",              # Schichtungsvariable
     group1_col="gr",                # Grossregion
-    group2_col= "nog_2_08_pub"      # Wirtschaftsbranche, NOGA 2008 (2-stellig), Stichprobengruppierungen
+    group2_col= "nog_2_08_pub",      # Wirtschaftsbranche, NOGA 2008 (2-stellig), Stichprobengruppierungen
+    type = 1
 ) {
 
   library(dplyr)
 
   # Weighted median
-  y = w.median(data[[value_col]], data[[weight_col]], probs = quant, type = 4)
+  y = w.median(data[[value_col]], data[[weight_col]], probs = quant, type = 1)
 
   # -------------------------------
   # Unternehmensniveau
