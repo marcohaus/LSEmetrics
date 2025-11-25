@@ -29,7 +29,7 @@ w.median <- function(x, w, probs = seq(0, 1, 0.25), na.rm = TRUE, type = 4) {
   x <- x[ord]
   w <- w[ord]
 
- # Fx <- (cumsum(w) - min(w)) / (sum(w) - min(w))
+
   Fx <- (cumsum(w) ) / (sum(w) )
   keep <- !duplicated(x, fromLast = TRUE)
   x <- x[keep]
