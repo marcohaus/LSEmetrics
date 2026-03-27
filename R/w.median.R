@@ -15,7 +15,7 @@
 #' x <- c(1, 2, 3, 4, 8)
 #' w <- c(1, 1, 2, 2, 4)
 #' w.median(x, w, probs = 0.5)
-w.median <- function(x, w, probs = seq(0, 1, 0.25), na.rm = TRUE, type = 4) {
+w.median <- function(x, w, probs = seq(0, 1, 0.25), na.rm = TRUE, type = 1) {
   x <- as.numeric(x)
   w <- as.numeric(w)
 

@@ -1,42 +1,43 @@
-#' Berechnung von Lohnquantilen und Konfidenzintervallen nach BFS-Makromethode
+#' Calculation of Wage Quantiles and Confidence Intervals Using BFS Macro Method
 #'
-#' \code{LSE_makro()} berechnet gewichtete Lohnquantile (z. B. Median) sowie
-#' deren Varianzschätzung und Konfidenzintervalle gemäss der BFS-Methode.
-#' Die Berechnungen berücksichtigen Unternehmensfaktoren, Stratifizierung sowie
-#' Gewichtungs- und Korrekturfaktoren.
+#' \code{LSE_macro()} calculates weighted wage quantiles (e.g., the median) as well as
+#' their variance estimates and confidence intervals according to the BFS method.
+#' The calculations take into account company-level factors, stratification, as well as
+#' weighting and adjustment factors.
 #'
-#' @param data Ein \code{data.frame} oder \code{tibble}, das die notwendigen Variablen enthält.
-#' @param quant Numerisch, das gewünschte Quantil (Standard = \code{0.5}, Median).
-#' @param value_col Zeichenkette, Name der Spalte mit den Lohnangaben
-#'   (Standard: \code{"mbls"} = standardisierter Bruttomonatslohn ohne Überstunden).
-#' @param weight_col Zeichenkette, Name der Spalte mit den Stichprobengewichten
-#'   (Standard: \code{"gewibgrs"}).
-#' @param company_col Zeichenkette, Unternehmensidentifikator (Standard: \code{"entid_n"}).
-#' @param company_size_col Zeichenkette, Anzahl der Lohnangaben pro Unternehmen
-#'   (Standard: \code{"anzlohn"}).
-#' @param thi_col Zeichenkette, Spalte mit korrigierter Antwortrate intra-Unternehmen
-#'   (Standard: \code{"thi"}).
-#' @param th_col Zeichenkette, Spalte mit korrigierter Antwortrate inter-Unternehmen
-#'   (Standard: \code{"th"}).
-#' @param nrep_col Zeichenkette, Spalte mit der Anzahl der antwortenden Unternehmen
-#'   pro Schicht (Standard: \code{"nrep"}).
-#' @param stra_col Zeichenkette, Schichtungsvariable (Standard: \code{"stra_n"}).
-#' @param group1_col Zeichenkette, erste Gruppierungsvariable (Standard: \code{"gr"}).
-#' @param group2_col Zeichenkette, zweite Gruppierungsvariable, typischerweise
-#'   Branchenklassifikation (Standard: \code{"nog_2_08_pub"}).
+#' @param data A \code{data.frame} or \code{tibble} containing the necessary variables.
+#' @param quant Numeric, the desired quantile (default = \code{0.5}, median).
+#' @param value_col Character, name of the column with wage values
+#'   (default: \code{"mbls"} = standardized gross monthly wage without overtime).
+#' @param weight_col Character, name of the column with survey weights
+#'   (default: \code{"gewibgrs"}).
+#' @param company_col Character, company identifier (default: \code{"entid_n"}).
+#' @param company_size_col Character, number of wages per company
+#'   (default: \code{"anzlohn"}).
+#' @param thi_col Character, column with corrected intra-company response rate
+#'   (default: \code{"thi"}).
+#' @param th_col Character, column with corrected inter-company response rate
+#'   (default: \code{"th"}).
+#' @param nrep_col Character, column with the number of responding companies
+#'   per stratum (default: \code{"nrep"}).
+#' @param stra_col Character, stratification variable (default: \code{"stra_n"}).
+#' @param group1_col Character, first grouping variable (default: \code{"gr"}).
+#' @param group2_col Character, second grouping variable, typically industry classification
+#'   (default: \code{"nog_2_08_pub"}).
+#' @param type Method used for median calculation.
+#'   (default: \code{"1"}).
 #'
 #' @details
-#' Die Funktion implementiert die vom BFS verwendete Makromethode zur
-#' Varianzschätzung von Lohnquantilen. Sie arbeitet in mehreren Stufen:
+#' The function implements the macro method used by BFS for variance estimation of wage quantiles.
+#' It works in several steps:
 #' \enumerate{
-#'   \item Berechnung des gewichteten Quantils mit \code{w.median}.
-#'   \item Aggregation auf Unternehmensebene.
-#'   \item Hochrechnung und Varianzschätzung auf startifizierte
-#'         Gruppen unter Einbezug der Korrekturfaktoren.
-#'   \item Aggregation und Berechnung von Konfidenzintervallen.
+#'   \item Calculation of the weighted quantile using \code{w.median}.
+#'   \item Aggregation at the company level.
+#'   \item Extrapolation and variance estimation for stratified groups including adjustment factors.
+#'   \item Aggregation and calculation of confidence intervals.
 #' }
 #'
-#' @return Ein \code{data.frame} mit folgenden Spalten:
+#' @return A \code{data.frame} with the following columns:
 #' \itemize{
 #'   \item \code{quant}: Quantile (0.5 = median)
 #'   \item \code{value}: Estimated value
@@ -53,13 +54,13 @@
 #' library(dplyr)
 #' library(purrr)
 #'
-#' # Einfacher Aufruf: Medianlohn für TG, privater Sektor
-#' DATEN %>%
+#' # Simple call: Median wage for TG, private sector
+#' DATA %>%
 #'   filter(arbkto == "TG", privoef == 1) %>%
 #'   lse_macro(quant = 0.5)
 #'
-#' # Beispiel mit Gruppierung: 90%-Quantil nach Geschlecht und Beruf
-#' DATEN %>%
+#' # Example with grouping: 90% quantile by gender and occupation
+#' DATA %>%
 #'   filter(arbkto == "TG", privoef == 1) %>%
 #'   group_split(geschle, berufst) %>%
 #'   map_dfr(~ lse_macro(.x, quant = 0.5) %>%
@@ -68,8 +69,8 @@
 #'               berufst = unique(.x$berufst)
 #'             ))
 #'
-#' # Mehrere Quantile (25%, 50%, 75%) nach Geschlecht und Beruf
-#' DATEN %>%
+#' # Multiple quantiles (25%, 50%, 75%) by gender and occupation
+#' DATA %>%
 #'   filter(arbkto == "TG", privoef == 1) %>%
 #'   group_split(geschle, berufst) %>%
 #'   map_dfr(~ {

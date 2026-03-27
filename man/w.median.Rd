@@ -4,7 +4,7 @@
 \alias{w.median}
 \title{Weighted Median}
 \usage{
-w.median(x, w, probs = seq(0, 1, 0.25), na.rm = TRUE, type = 4)
+w.median(x, w, probs = seq(0, 1, 0.25), na.rm = TRUE, type = 1)
 }
 \arguments{
 \item{x}{Numeric vector of values.}
