@@ -1,108 +1,110 @@
 #' Calculate Weighted Proportion of Low-Wage Jobs with Confidence Interval
 #'
-#' This function computes the weighted proportion of low-wage jobs in a dataset,
-#' optionally grouped by one or more variables, and provides a confidence interval
-#' for the estimate. It also allows for filtering groups with a small sample size
-#' based on a minimum coefficient of variation (CV).
+#' This function calculates the weighted proportion of low-wage jobs within specified groups,
+#' including confidence intervals and flags for small sample sizes or high coefficients of variation.
 #'
-#' @param data A data frame containing the survey or employment data.
-#' @param weight_var Character. Name of the variable containing survey weights. Default is "gewicht".
-#' @param group_var Character vector. Names of variables to group by. Default is an empty vector (no grouping).
-#' @param CV_min Numeric. Minimum acceptable coefficient of variation for reporting the estimate. Default is 5.
-#' @param Konfidenz Numeric. Z-value for constructing the confidence interval (e.g., 0.975 for 95% CI). Default is qnorm(0.975).
-#'
-#' @return A data frame with the following columns:
-#' \describe{
-#'   \item{group}{Grouping variable(s) if specified.}
-#'   \item{prop_low_wage}{Weighted proportion of low-wage jobs.}
-#'   \item{ci_lower}{Lower bound of the confidence interval.}
-#'   \item{ci_upper}{Upper bound of the confidence interval.}
-#'   \item{cv}{Coefficient of variation.}
-#' }
-#'
-#' @details
-#' This function is designed for survey or administrative data where weighted estimates
-#' are needed. Groups with a CV below `CV_min` can be flagged or omitted to ensure
-#' reliability. The confidence interval is calculated using the normal approximation
-#' method based on the provided `Konfidenz` level.
+#' @param data A data frame containing the variables.
+#' @param weight_var Character. Name of the weight variable. Default is "gewicht".
+#' @param group_var Character vector. Names of grouping variables. Default is c("").
+#' @param CV_min Numeric. Minimum acceptable coefficient of variation. Default is 5.
+#' @param Konfidenz Numeric. Z-score for confidence interval. Default is qnorm(0.975).
 #'
 #' @examples
 #' \dontrun{
-#' # -----------------------------
-#' # Example 1: Without grouping
-#' # -----------------------------
-#' result_all <- wage_component_shares(DATA)
-#' print(result_all)
-#'
-#' # -----------------------------
-#' # Example 2: By gender
-#' # -----------------------------
-#' result_gender <- wage_component_shares(DATA, group_var = "gender")
-#' print(result_gender)
-#'
-#' # -----------------------------
-#' # Example 3: By multiple variables
-#' # -----------------------------
-#' result_multi <- wage_component_shares(DATA, group_var = c("gender", "industry"))
-#' print(result_multi)
-#'
-#' # -----------------------------
-#' # Optional: Create age groups before calling function
-#' # -----------------------------
-#' DATA$age_group <- dplyr::case_when(
-#'   DATA$age < 20 ~ "Under 20",
-#'   DATA$age < 30 ~ "20-29",
-#'   DATA$age < 40 ~ "30-39",
-#'   DATA$age < 50 ~ "40-49",
-#'   DATA$age < 65 & DATA$gender == "Female" ~ "50-64/65",
-#'   DATA$age < 66 & DATA$gender == "Male" ~ "50-64/65",
-#'   DATA$age >= 62 ~ "65+"
+#' # Example data
+#' DATA <- data.frame(
+#'   age = c(25, 32, 45, 55, 67),
+#'   gender = c("Male", "Female", "Female", "Male", "Female"),
+#'   gewicht = c(1.2, 0.8, 1.5, 1.0, 0.9),
+#'   mbls = c(1200, 900, 1500, 2000, 1000)
 #' )
 #'
-#' result_age <- wage_component_shares(DATA, group_var = "age_group")
-#' print(result_age)
+#' DATA %>%
+#'   dplyr::mutate(age_group = dplyr::case_when(
+#'     age < 20 ~ "Under 20",
+#'     age < 30 ~ "20-29",
+#'     age < 40 ~ "30-39",
+#'     age < 50 ~ "40-49",
+#'     age < 65 & gender == "Female" ~ "50-64/65",
+#'     age < 66 & gender == "Male" ~ "50-64/65",
+#'     age >= 62 ~ "65+"
+#'   )) %>%
+#'   LSEmetrics::prop_low_wage_ci(
+#'     weight_var = "gewicht",
+#'     group_var = c("age_group"),
+#'     CV_min = 10
+#'   )
 #' }
+#'
 #' @export
+#' @import dplyr
+#' @importFrom magrittr %>%
+prop_low_wage_ci <- function(data, weight_var = "gewicht", group_var = c(""), CV_min = 5, Konfidenz = qnorm(0.975)) {
 
+  # Prüfen, ob Tieflohn existiert
+  if (!exists("Tieflohn")) stop("Variable 'Tieflohn' muss im globalen Environment definiert sein.")
 
-wage_component_shares <- function(data, weight_var = "gewicht", group_var = NULL) {
+  ind_var <- "Tieflohn_ind"
 
-  # Optional grouping
-  if (!is.null(group_var)) {
-    data <- dplyr::group_by(data, dplyr::across(dplyr::all_of(group_var)))
-  }
+  # Variablen als Symbols für dplyr
+  ind_sym <- rlang::sym(ind_var)
+  weight_sym <- rlang::sym(weight_var)
+  group_syms <- rlang::syms(group_var)
 
-  out <- dplyr::summarise(
-    data,
-    gross_agg        = sum(.data$blimok * .data[[weight_var]], na.rm = TRUE),
-    overtime_agg     = sum(.data$verduz * .data[[weight_var]], na.rm = TRUE),
-    allowances_agg   = sum(.data$zulagen * .data[[weight_var]], na.rm = TRUE),
-    thirteenth_agg   = sum((.data$xiiimloh / 12) * .data[[weight_var]], na.rm = TRUE),
-    bonuses_agg      = sum((.data$sonderza / 12) * .data[[weight_var]], na.rm = TRUE),
-    .groups = "drop"
-  )
+  # 1. Tieflohn-Indikator erstellen
+  data <- data %>%
+    dplyr::mutate(!!ind_sym := ifelse(mbls < Tieflohn, 1, 0))
 
-  out$overtime        <- out$overtime_agg / out$gross_agg * 100
-  out$allowances      <- out$allowances_agg / out$gross_agg * 100
-  out$thirteenth_month <- out$thirteenth_agg / out$gross_agg * 100
-  out$bonuses         <- out$bonuses_agg / out$gross_agg * 100
-
-  # Select relevant columns
-  out <- dplyr::select(
-    out,
-    dplyr::any_of(group_var),
-    "overtime", "allowances", "thirteenth_month", "bonuses"
-  )
-
-  # Round and calculate base wage
-  out <- dplyr::mutate(
-    out,
-    dplyr::across(dplyr::c("overtime", "allowances", "thirteenth_month", "bonuses"),
-                  ~ round(.x, 1)),
-    base_wage = 100 - rowSums(
-      dplyr::across(dplyr::c("overtime", "allowances", "thirteenth_month", "bonuses"))
+  # 2. Betriebsaggregation pro entid_n + Gruppen
+  ent_agg <- data %>%
+    dplyr::group_by(!!!group_syms) %>%
+    dplyr::mutate(Anteil_raw = sum(!!ind_sym * !!weight_sym) / sum(!!weight_sym)) %>%
+    dplyr::group_by(entid_n, !!!group_syms, Anteil_raw) %>%
+    dplyr::summarise(
+      svhi = sum(!!weight_sym, na.rm = TRUE),
+      NDhi = dplyr::n(),
+      e_hi = sum(!!weight_sym * (!!ind_sym - 0.5)),
+      ej_var = var(!!weight_sym * (!!ind_sym - 0.5)),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      NDhi1 = NDhi - 1,
+      Bhi = NDhi1 * ej_var + NDhi * (e_hi / NDhi)^2,
+      Bhi = ifelse(NDhi > 1, Bhi / NDhi1, 0)
     )
-  )
 
-  return(out)
+  # 3. Gruppenaggregation auf allen Gruppierungsebenen
+  stra_agg <- ent_agg %>%
+    dplyr::group_by(!!!group_syms, Anteil_raw) %>%
+    dplyr::summarise(
+      Bh = sum(Bhi, na.rm = TRUE),
+      svh = sum(svhi, na.rm = TRUE),
+      dlh = sum(NDhi1, na.rm = TRUE),
+      toth = sum(NDhi, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      SV2st = Bh / svh^2,
+      demi95 = sqrt(SV2st) * Konfidenz
+    )
+
+  # 4. Berechnung von CV und Anteil
+  result <- stra_agg %>%
+    dplyr::mutate(
+      n_e = toth - dlh,
+      n_s = toth,
+      b_i95 = pmax(0, Anteil_raw - demi95),
+      b_s95 = Anteil_raw + demi95,
+      CV_sync95 = 100 * pmax(Anteil_raw - b_i95, b_s95 - Anteil_raw) / (qnorm(0.975) * Anteil_raw),
+      Anteil = dplyr::case_when(
+        n_s * Anteil_raw < 60 ~ "*",
+        n_e * Anteil_raw < 5 ~ "*",
+        CV_sync95 > CV_min * 2 ~ "*",
+        CV_sync95 > CV_min ~ paste0("[", formatC(Anteil_raw * 100, format = "f", digits = 1), "]"),
+        TRUE ~ formatC(Anteil_raw * 100, format = "f", digits = 1)
+      )
+    ) %>%
+    dplyr::select(dplyr::all_of(group_var), Anteil, Anteil_raw, CV_sync95, n_e, n_s, b_i95, b_s95)
+
+  return(result)
 }
